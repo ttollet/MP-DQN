@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "mp-dqn"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+packages = [{include = "mp_dqn"}]
+
+[tool.poetry.dependencies]
+python = "^3.5"
+gym = "^0.10.5"
+torch = "^0.4.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
