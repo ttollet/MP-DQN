@@ -1,4 +1,5 @@
-Add following to .bashrc:
+(For use in Ubuntu)
+Add following to .bashrc, replacing [USER_HOME_DIR] in the final line with your respective home directory:
 
 # pyenv
 export PYENV_ROOT="$HOME/.pyenv"
@@ -9,7 +10,7 @@ eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 
 # poetry
-export PATH=$PATH:/home/tollet/.local/bin
+export PATH=$PATH:/home/[USER_HOME_DIR]/.local/bin
 
 -----------------------------
 THEN
