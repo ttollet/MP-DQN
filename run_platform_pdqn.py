@@ -54,6 +54,7 @@ def evaluate(env, agent, episodes=1000):
 
 @click.command()
 @click.option('--seed', default=1, help='Random seed.', type=int)
+@click.option('--random-seed', default=True, help='Automatically set random seed.', type=bool)
 @click.option('--evaluation-episodes', default=1000, help='Episodes over which to evaluate after training.', type=int)
 @click.option('--episodes', default=20000, help='Number of epsiodes.', type=int)
 @click.option('--batch-size', default=128, help='Minibatch size.', type=int)
@@ -91,12 +92,14 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--title', default="PDDQN", help="Prefix of output files", type=str)
 @click.option('--use-wandb', default=False, help="Use Weights & Biases for tracking metrics.", type=bool)
 @click.option('--runs', default=1, help="How many times to run this config.", type=int)
-def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradients, initial_memory_threshold,
+def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradients, initial_memory_threshold,
         replay_memory_size, epsilon_steps, tau_actor, tau_actor_param, use_ornstein_noise, learning_rate_actor,
         learning_rate_actor_param, epsilon_final, zero_index_gradients, initialise_params, scale_actions,
         clip_grad, split, indexed, layers, multipass, weighted, average, random_weighted, render_freq,
         save_freq, save_dir, save_frames, visualise, action_input_layer, title, use_wandb, runs):
     for run_index in range(runs):
+        if random_seed:
+            seed = np.random.randint(low=1, high=1000000)
         if use_wandb:
             run_config = get_calling_function_parameters()
             run_config["algorithm"] = "P-DQN"
@@ -244,7 +247,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
                         "avg_length/overall": avg_length, "avg_length/last_100_episodes": avg_100_length,
                         "avg_reward/overall": avg_reward, "avg_reward/last_100_episodes": avg_100_reward
                         })
-                print('{0:5s} R:{1:.4f} r100:{2:.4f} | L:{1:.4f} l100:{2:.4f}'.format(str(i), avg_reward, avg_100_reward, avg_length, avg_100_length))
+                print('{0:5s} R:{1:.4f} r100:{2:.4f} | L:{} l100:{}'.format(str(i), avg_reward, avg_100_reward, avg_length, avg_100_length))
         end_time = time.time()
         print("Took %.2f seconds" % (end_time - start_time))
         env.close()
