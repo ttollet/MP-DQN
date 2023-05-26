@@ -247,7 +247,7 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
                         "avg_length/overall": avg_length, "avg_length/last_100_episodes": avg_100_length,
                         "avg_reward/overall": avg_reward, "avg_reward/last_100_episodes": avg_100_reward
                         })
-                print('{0:5s} R:{1:.4f} r100:{2:.4f} | L:{} l100:{}'.format(str(i), avg_reward, avg_100_reward, avg_length, avg_100_length))
+                print('{0:5s} R:{1:.4f} r100:{2:.4f} | L:{3:f} l100:{4:f}'.format(str(i), avg_reward, avg_100_reward, avg_length, avg_100_length))
         end_time = time.time()
         print("Took %.2f seconds" % (end_time - start_time))
         env.close()
