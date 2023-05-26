@@ -9,6 +9,10 @@ from common.platform_domain import PlatformFlattenedActionWrapper
 import wandb  # Saving metrics
 import inspect  # Accessing function parameters
 
+# Notifications
+from pynotifier import NotificationClient, Notification
+from pynotifier.backends import platform
+
 import numpy as np
 
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
@@ -86,179 +90,192 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--visualise', default=True, help="Render game states. Incompatible with save-frames.", type=bool)
 @click.option('--title', default="PDDQN", help="Prefix of output files", type=str)
 @click.option('--use-wandb', default=False, help="Use Weights & Biases for tracking metrics.", type=bool)
+@click.option('--runs', default=1, help="How many times to run this config.", type=int)
 def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradients, initial_memory_threshold,
         replay_memory_size, epsilon_steps, tau_actor, tau_actor_param, use_ornstein_noise, learning_rate_actor,
         learning_rate_actor_param, epsilon_final, zero_index_gradients, initialise_params, scale_actions,
         clip_grad, split, indexed, layers, multipass, weighted, average, random_weighted, render_freq,
-        save_freq, save_dir, save_frames, visualise, action_input_layer, title, use_wandb):
+        save_freq, save_dir, save_frames, visualise, action_input_layer, title, use_wandb, runs):
+    for run_index in range(runs):
+        if use_wandb:
+            run_config = get_calling_function_parameters()
+            run_config["algorithm"] = "P-DQN"
+            run_config["environment"] = "Platform"
+            wandb.init(
+                project = "bester-scripts",
+                tags = ["P-DQN", "Platform"],
+                config = run_config
+            )
+        if save_freq > 0 and save_dir:
+            save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
+            os.makedirs(save_dir, exist_ok=True)
+        assert not (save_frames and visualise)
+        if visualise:
+            assert render_freq > 0
+        if save_frames:
+            assert render_freq > 0
+            vidir = os.path.join(save_dir, "frames")
+            os.makedirs(vidir, exist_ok=True)
 
-    if use_wandb:
-        wandb.init(
-            project = "bester-scripts",
-            config = get_calling_function_parameters()
-        )
-    if save_freq > 0 and save_dir:
-        save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
-        os.makedirs(save_dir, exist_ok=True)
-    assert not (save_frames and visualise)
-    if visualise:
-        assert render_freq > 0
-    if save_frames:
-        assert render_freq > 0
-        vidir = os.path.join(save_dir, "frames")
-        os.makedirs(vidir, exist_ok=True)
+        env = gym.make('Platform-v0')
+        initial_params_ = [3., 10., 400.]
+        if scale_actions:
+            for a in range(env.action_space.spaces[0].n):
+                initial_params_[a] = 2. * (initial_params_[a] - env.action_space.spaces[1].spaces[a].low) / (
+                            env.action_space.spaces[1].spaces[a].high - env.action_space.spaces[1].spaces[a].low) - 1.
 
-    env = gym.make('Platform-v0')
-    initial_params_ = [3., 10., 400.]
-    if scale_actions:
-        for a in range(env.action_space.spaces[0].n):
-            initial_params_[a] = 2. * (initial_params_[a] - env.action_space.spaces[1].spaces[a].low) / (
-                        env.action_space.spaces[1].spaces[a].high - env.action_space.spaces[1].spaces[a].low) - 1.
+        env = ScaledStateWrapper(env)
+        env = PlatformFlattenedActionWrapper(env)
+        if scale_actions:
+            env = ScaledParameterisedActionWrapper(env)
 
-    env = ScaledStateWrapper(env)
-    env = PlatformFlattenedActionWrapper(env)
-    if scale_actions:
-        env = ScaledParameterisedActionWrapper(env)
+        dir = os.path.join(save_dir,title)
+        env = Monitor(env, directory=os.path.join(dir,str(seed)), video_callable=False, write_upon_reset=False, force=True)
+        env.seed(seed)
+        np.random.seed(seed)
 
-    dir = os.path.join(save_dir,title)
-    env = Monitor(env, directory=os.path.join(dir,str(seed)), video_callable=False, write_upon_reset=False, force=True)
-    env.seed(seed)
-    np.random.seed(seed)
+        print(env.observation_space)
 
-    print(env.observation_space)
+        from agents.pdqn import PDQNAgent
+        from agents.pdqn_split import SplitPDQNAgent
+        from agents.pdqn_multipass import MultiPassPDQNAgent
+        assert not (split and multipass)
+        agent_class = PDQNAgent
+        if split:
+            agent_class = SplitPDQNAgent
+        elif multipass:
+            agent_class = MultiPassPDQNAgent
+        agent = agent_class(
+                        env.observation_space.spaces[0], env.action_space,
+                        batch_size=batch_size,
+                        learning_rate_actor=learning_rate_actor,
+                        learning_rate_actor_param=learning_rate_actor_param,
+                        epsilon_steps=epsilon_steps,
+                        gamma=gamma,
+                        tau_actor=tau_actor,
+                        tau_actor_param=tau_actor_param,
+                        clip_grad=clip_grad,
+                        indexed=indexed,
+                        weighted=weighted,
+                        average=average,
+                        random_weighted=random_weighted,
+                        initial_memory_threshold=initial_memory_threshold,
+                        use_ornstein_noise=use_ornstein_noise,
+                        replay_memory_size=replay_memory_size,
+                        epsilon_final=epsilon_final,
+                        inverting_gradients=inverting_gradients,
+                        actor_kwargs={'hidden_layers': layers,
+                                        'action_input_layer': action_input_layer,},
+                        actor_param_kwargs={'hidden_layers': layers,
+                                            'squashing_function': False,
+                                            'output_layer_init_std': 0.0001,},
+                        zero_index_gradients=zero_index_gradients,
+                        seed=seed)
 
-    from agents.pdqn import PDQNAgent
-    from agents.pdqn_split import SplitPDQNAgent
-    from agents.pdqn_multipass import MultiPassPDQNAgent
-    assert not (split and multipass)
-    agent_class = PDQNAgent
-    if split:
-        agent_class = SplitPDQNAgent
-    elif multipass:
-        agent_class = MultiPassPDQNAgent
-    agent = agent_class(
-                       env.observation_space.spaces[0], env.action_space,
-                       batch_size=batch_size,
-                       learning_rate_actor=learning_rate_actor,
-                       learning_rate_actor_param=learning_rate_actor_param,
-                       epsilon_steps=epsilon_steps,
-                       gamma=gamma,
-                       tau_actor=tau_actor,
-                       tau_actor_param=tau_actor_param,
-                       clip_grad=clip_grad,
-                       indexed=indexed,
-                       weighted=weighted,
-                       average=average,
-                       random_weighted=random_weighted,
-                       initial_memory_threshold=initial_memory_threshold,
-                       use_ornstein_noise=use_ornstein_noise,
-                       replay_memory_size=replay_memory_size,
-                       epsilon_final=epsilon_final,
-                       inverting_gradients=inverting_gradients,
-                       actor_kwargs={'hidden_layers': layers,
-                                     'action_input_layer': action_input_layer,},
-                       actor_param_kwargs={'hidden_layers': layers,
-                                           'squashing_function': False,
-                                           'output_layer_init_std': 0.0001,},
-                       zero_index_gradients=zero_index_gradients,
-                       seed=seed)
+        if initialise_params:
+            initial_weights = np.zeros((env.action_space.spaces[0].n, env.observation_space.spaces[0].shape[0]))
+            initial_bias = np.zeros(env.action_space.spaces[0].n)
+            for a in range(env.action_space.spaces[0].n):
+                initial_bias[a] = initial_params_[a]
+            agent.set_action_parameter_passthrough_weights(initial_weights, initial_bias)
+        print(agent)
+        max_steps = 250
+        total_reward = 0.
+        total_length = 0.
+        returns = []
+        lengths = []
+        start_time = time.time()
+        video_index = 0
+        # agent.epsilon_final = 0.
+        # agent.epsilon = 0.
+        # agent.noise = None
 
-    if initialise_params:
-        initial_weights = np.zeros((env.action_space.spaces[0].n, env.observation_space.spaces[0].shape[0]))
-        initial_bias = np.zeros(env.action_space.spaces[0].n)
-        for a in range(env.action_space.spaces[0].n):
-            initial_bias[a] = initial_params_[a]
-        agent.set_action_parameter_passthrough_weights(initial_weights, initial_bias)
-    print(agent)
-    max_steps = 250
-    total_reward = 0.
-    total_length = 0.
-    returns = []
-    lengths = []
-    start_time = time.time()
-    video_index = 0
-    # agent.epsilon_final = 0.
-    # agent.epsilon = 0.
-    # agent.noise = None
-
-    for i in range(episodes):
-        if save_freq > 0 and save_dir and i % save_freq == 0:
-            agent.save_models(os.path.join(save_dir, str(i)))
-        state, _ = env.reset()
-        state = np.array(state, dtype=np.float32, copy=False)
-        if visualise and i % render_freq == 0:
-            env.render()
-
-        act, act_param, all_action_parameters = agent.act(state)
-        action = pad_action(act, act_param)
-
-        episode_reward = 0.
-        episode_length = 0
-        agent.start_episode()
-        for j in range(max_steps):
-
-            ret = env.step(action)
-            (next_state, steps), reward, terminal, _ = ret
-            next_state = np.array(next_state, dtype=np.float32, copy=False)
-
-            next_act, next_act_param, next_all_action_parameters = agent.act(next_state)
-            next_action = pad_action(next_act, next_act_param)
-            agent.step(state, (act, all_action_parameters), reward, next_state,
-                       (next_act, next_all_action_parameters), terminal, steps)
-            act, act_param, all_action_parameters = next_act, next_act_param, next_all_action_parameters
-            action = next_action
-            state = next_state
-
-            episode_reward += reward
-            episode_length += 1
+        for i in range(episodes):
+            if save_freq > 0 and save_dir and i % save_freq == 0:
+                agent.save_models(os.path.join(save_dir, str(i)))
+            state, _ = env.reset()
+            state = np.array(state, dtype=np.float32, copy=False)
             if visualise and i % render_freq == 0:
                 env.render()
 
-            if terminal:
-                break
-        agent.end_episode()
+            act, act_param, all_action_parameters = agent.act(state)
+            action = pad_action(act, act_param)
 
-        if save_frames and i % render_freq == 0:
-            video_index = env.unwrapped.save_render_states(vidir, title, video_index)
+            episode_reward = 0.
+            episode_length = 0
+            agent.start_episode()
+            for j in range(max_steps):
 
-        returns.append(episode_reward)
-        lengths.append(episode_length)
-        total_reward += episode_reward
-        total_length += episode_length
-        if i % 100 == 0:
-            avg_reward = total_reward / (i + 1)
-            avg_100_reward = np.array(returns[-100:]).mean()
-            avg_length = total_length / (i + 1)
-            avg_100_length = np.array(lengths[-100:]).mean()
-            if use_wandb:
-                wandb.log({
-                    "avg_length": avg_length, "avg_100_length": avg_100_length,
-                    "avg_reward": avg_reward, "avg_100_reward": avg_100_reward
-                    })
-            print('{0:5s} R:{1:.4f} r100:{2:.4f} | L:{1:.4f} l100:{2:.4f}'.format(str(i), avg_reward, avg_100_reward, avg_length, avg_100_length))
-    end_time = time.time()
-    print("Took %.2f seconds" % (end_time - start_time))
-    env.close()
-    if save_freq > 0 and save_dir:
-        agent.save_models(os.path.join(save_dir, str(i)))
+                ret = env.step(action)
+                (next_state, steps), reward, terminal, _ = ret
+                next_state = np.array(next_state, dtype=np.float32, copy=False)
 
-    returns = env.get_episode_rewards()
-    print("Ave. return =", sum(returns) / len(returns))
-    print("Ave. last 100 episode return =", sum(returns[-100:]) / 100.)
+                next_act, next_act_param, next_all_action_parameters = agent.act(next_state)
+                next_action = pad_action(next_act, next_act_param)
+                agent.step(state, (act, all_action_parameters), reward, next_state,
+                        (next_act, next_all_action_parameters), terminal, steps)
+                act, act_param, all_action_parameters = next_act, next_act_param, next_all_action_parameters
+                action = next_action
+                state = next_state
 
-    np.save(os.path.join(dir, title + "{}".format(str(seed))),returns)
+                episode_reward += reward
+                episode_length += 1
+                if visualise and i % render_freq == 0:
+                    env.render()
 
-    if evaluation_episodes > 0:
-        print("Evaluating agent over {} episodes".format(evaluation_episodes))
-        agent.epsilon_final = 0.
-        agent.epsilon = 0.
-        agent.noise = None
-        evaluation_returns = evaluate(env, agent, evaluation_episodes)
-        print("Ave. evaluation return =", sum(evaluation_returns) / len(evaluation_returns))
-        np.save(os.path.join(dir, title + "{}e".format(str(seed))), evaluation_returns)
+                if terminal:
+                    break
+            agent.end_episode()
 
-    if use_wandb:
-        wandb.finish()
+            if save_frames and i % render_freq == 0:
+                video_index = env.unwrapped.save_render_states(vidir, title, video_index)
+
+            returns.append(episode_reward)
+            lengths.append(episode_length)
+            total_reward += episode_reward
+            total_length += episode_length
+            if i % 100 == 0:
+                avg_reward = total_reward / (i + 1)
+                avg_100_reward = np.array(returns[-100:]).mean()
+                avg_length = total_length / (i + 1)
+                avg_100_length = np.array(lengths[-100:]).mean()
+                if use_wandb:
+                    wandb.log({
+                        "avg_length/overall": avg_length, "avg_length/last_100_episodes": avg_100_length,
+                        "avg_reward/overall": avg_reward, "avg_reward/last_100_episodes": avg_100_reward
+                        })
+                print('{0:5s} R:{1:.4f} r100:{2:.4f} | L:{1:.4f} l100:{2:.4f}'.format(str(i), avg_reward, avg_100_reward, avg_length, avg_100_length))
+        end_time = time.time()
+        print("Took %.2f seconds" % (end_time - start_time))
+        env.close()
+        if save_freq > 0 and save_dir:
+            agent.save_models(os.path.join(save_dir, str(i)))
+
+        returns = env.get_episode_rewards()
+        print("Ave. return =", sum(returns) / len(returns))
+        print("Ave. last 100 episode return =", sum(returns[-100:]) / 100.)
+
+        np.save(os.path.join(dir, title + "{}".format(str(seed))),returns)
+
+        if evaluation_episodes > 0:
+            print("Evaluating agent over {} episodes".format(evaluation_episodes))
+            agent.epsilon_final = 0.
+            agent.epsilon = 0.
+            agent.noise = None
+            evaluation_returns = evaluate(env, agent, evaluation_episodes)
+            print("Ave. evaluation return =", sum(evaluation_returns) / len(evaluation_returns))
+            np.save(os.path.join(dir, title + "{}e".format(str(seed))), evaluation_returns)
+
+        if use_wandb:
+            wandb.finish()
+
+        c = NotificationClient()
+        c.register_backend(platform.Backend())
+        notification = Notification(
+            title = 'Script: Run {} complete.'.format(run_index),
+            duration = 5,
+        )
+        c.notify_all(notification)
 
 
 if __name__ == '__main__':
