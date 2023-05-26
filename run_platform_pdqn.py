@@ -6,10 +6,19 @@ import gym_platform
 from gym.wrappers import Monitor
 from common import ClickPythonLiteralOption
 from common.platform_domain import PlatformFlattenedActionWrapper
+import wandb  # Saving metrics
+import inspect  # Accessing function parameters
 
 import numpy as np
 
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
+
+
+def get_calling_function_parameters():
+    frame = inspect.currentframe().f_back
+    args, _, _, values = inspect.getargvalues(frame)
+    calling_function_parameters = {arg: values[arg] for arg in args if arg != 'self'}
+    return calling_function_parameters
 
 
 def pad_action(act, act_param):
@@ -76,12 +85,18 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--save-frames', default=False, help="Save render frames from the environment. Incompatible with visualise.", type=bool)
 @click.option('--visualise', default=True, help="Render game states. Incompatible with save-frames.", type=bool)
 @click.option('--title', default="PDDQN", help="Prefix of output files", type=str)
+@click.option('--use-wandb', default=False, help="Use Weights & Biases for tracking metrics.", type=bool)
 def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradients, initial_memory_threshold,
         replay_memory_size, epsilon_steps, tau_actor, tau_actor_param, use_ornstein_noise, learning_rate_actor,
         learning_rate_actor_param, epsilon_final, zero_index_gradients, initialise_params, scale_actions,
         clip_grad, split, indexed, layers, multipass, weighted, average, random_weighted, render_freq,
-        save_freq, save_dir, save_frames, visualise, action_input_layer, title):
+        save_freq, save_dir, save_frames, visualise, action_input_layer, title, use_wandb):
 
+    if use_wandb:
+        wandb.init(
+            project = "bester-scripts",
+            config = get_calling_function_parameters()
+        )
     if save_freq > 0 and save_dir:
         save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
         os.makedirs(save_dir, exist_ok=True)
@@ -157,7 +172,9 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
     print(agent)
     max_steps = 250
     total_reward = 0.
+    total_length = 0.
     returns = []
+    lengths = []
     start_time = time.time()
     video_index = 0
     # agent.epsilon_final = 0.
@@ -176,6 +193,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         action = pad_action(act, act_param)
 
         episode_reward = 0.
+        episode_length = 0
         agent.start_episode()
         for j in range(max_steps):
 
@@ -192,6 +210,7 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
             state = next_state
 
             episode_reward += reward
+            episode_length += 1
             if visualise and i % render_freq == 0:
                 env.render()
 
@@ -203,9 +222,20 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
             video_index = env.unwrapped.save_render_states(vidir, title, video_index)
 
         returns.append(episode_reward)
+        lengths.append(episode_length)
         total_reward += episode_reward
+        total_length += episode_length
         if i % 100 == 0:
-            print('{0:5s} R:{1:.4f} r100:{2:.4f}'.format(str(i), total_reward / (i + 1), np.array(returns[-100:]).mean()))
+            avg_reward = total_reward / (i + 1)
+            avg_100_reward = np.array(returns[-100:]).mean()
+            avg_length = total_length / (i + 1)
+            avg_100_length = np.array(lengths[-100:]).mean()
+            if use_wandb:
+                wandb.log({
+                    "avg_length": avg_length, "avg_100_length": avg_100_length,
+                    "avg_reward": avg_reward, "avg_100_reward": avg_100_reward
+                    })
+            print('{0:5s} R:{1:.4f} r100:{2:.4f} | L:{1:.4f} l100:{2:.4f}'.format(str(i), avg_reward, avg_100_reward, avg_length, avg_100_length))
     end_time = time.time()
     print("Took %.2f seconds" % (end_time - start_time))
     env.close()
@@ -226,6 +256,9 @@ def run(seed, episodes, evaluation_episodes, batch_size, gamma, inverting_gradie
         evaluation_returns = evaluate(env, agent, evaluation_episodes)
         print("Ave. evaluation return =", sum(evaluation_returns) / len(evaluation_returns))
         np.save(os.path.join(dir, title + "{}e".format(str(seed))), evaluation_returns)
+
+    if use_wandb:
+        wandb.finish()
 
 
 if __name__ == '__main__':
