@@ -4,10 +4,9 @@ import time
 import gym
 import gym_platform
 from gym.wrappers import Monitor
-from common import ClickPythonLiteralOption
+from common import ClickPythonLiteralOption, get_calling_function_parameters
 from common.platform_domain import PlatformFlattenedActionWrapper
 import wandb  # Saving metrics
-import inspect  # Accessing function parameters
 
 # Notifications
 from pynotifier import NotificationClient, Notification
@@ -18,15 +17,9 @@ import numpy as np
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
 
 
-def get_calling_function_parameters():
-    frame = inspect.currentframe().f_back
-    args, _, _, values = inspect.getargvalues(frame)
-    calling_function_parameters = {arg: values[arg] for arg in args if arg != 'self'}
-    return calling_function_parameters
-
-
 def pad_action(act, act_param):
-    params = [np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32)]
+    params = [np.zeros((1,), dtype=np.float32), np.zeros(
+        (1,), dtype=np.float32), np.zeros((1,), dtype=np.float32)]
     params[act][:] = act_param
     return (act, params)
 
@@ -70,7 +63,8 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--epsilon-final', default=0.01, help='Final epsilon value.', type=float)
 @click.option('--tau-actor', default=0.1, help='Soft target network update averaging factor.', type=float)
 @click.option('--tau-actor-param', default=0.001, help='Soft target network update averaging factor.', type=float)  # 0.001
-@click.option('--learning-rate-actor', default=0.001, help="Actor network learning rate.", type=float) # 0.001/0.0001 learns faster but tableaus faster too
+# 0.001/0.0001 learns faster but tableaus faster too
+@click.option('--learning-rate-actor', default=0.001, help="Actor network learning rate.", type=float)
 @click.option('--learning-rate-actor-param', default=0.0001, help="Critic network learning rate.", type=float)  # 0.00001
 @click.option('--scale-actions', default=True, help="Scale actions.", type=bool)
 @click.option('--initialise-params', default=True, help='Initialise action parameters.', type=bool)
@@ -105,9 +99,9 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
             run_config["algorithm"] = "P-DQN"
             run_config["environment"] = "Platform"
             wandb.init(
-                project = "bester-scripts",
-                tags = ["P-DQN", "Platform"],
-                config = run_config
+                project="bester-scripts",
+                tags=["P-DQN", "Platform"],
+                config=run_config
             )
         if save_freq > 0 and save_dir:
             save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
@@ -125,15 +119,16 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
         if scale_actions:
             for a in range(env.action_space.spaces[0].n):
                 initial_params_[a] = 2. * (initial_params_[a] - env.action_space.spaces[1].spaces[a].low) / (
-                            env.action_space.spaces[1].spaces[a].high - env.action_space.spaces[1].spaces[a].low) - 1.
+                    env.action_space.spaces[1].spaces[a].high - env.action_space.spaces[1].spaces[a].low) - 1.
 
         env = ScaledStateWrapper(env)
         env = PlatformFlattenedActionWrapper(env)
         if scale_actions:
             env = ScaledParameterisedActionWrapper(env)
 
-        dir = os.path.join(save_dir,title)
-        env = Monitor(env, directory=os.path.join(dir,str(seed)), video_callable=False, write_upon_reset=False, force=True)
+        dir = os.path.join(save_dir, title)
+        env = Monitor(env, directory=os.path.join(dir, str(seed)),
+                      video_callable=False, write_upon_reset=False, force=True)
         env.seed(seed)
         np.random.seed(seed)
 
@@ -149,38 +144,40 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
         elif multipass:
             agent_class = MultiPassPDQNAgent
         agent = agent_class(
-                        env.observation_space.spaces[0], env.action_space,
-                        batch_size=batch_size,
-                        learning_rate_actor=learning_rate_actor,
-                        learning_rate_actor_param=learning_rate_actor_param,
-                        epsilon_steps=epsilon_steps,
-                        gamma=gamma,
-                        tau_actor=tau_actor,
-                        tau_actor_param=tau_actor_param,
-                        clip_grad=clip_grad,
-                        indexed=indexed,
-                        weighted=weighted,
-                        average=average,
-                        random_weighted=random_weighted,
-                        initial_memory_threshold=initial_memory_threshold,
-                        use_ornstein_noise=use_ornstein_noise,
-                        replay_memory_size=replay_memory_size,
-                        epsilon_final=epsilon_final,
-                        inverting_gradients=inverting_gradients,
-                        actor_kwargs={'hidden_layers': layers,
-                                        'action_input_layer': action_input_layer,},
-                        actor_param_kwargs={'hidden_layers': layers,
-                                            'squashing_function': False,
-                                            'output_layer_init_std': 0.0001,},
-                        zero_index_gradients=zero_index_gradients,
-                        seed=seed)
+            env.observation_space.spaces[0], env.action_space,
+            batch_size=batch_size,
+            learning_rate_actor=learning_rate_actor,
+            learning_rate_actor_param=learning_rate_actor_param,
+            epsilon_steps=epsilon_steps,
+            gamma=gamma,
+            tau_actor=tau_actor,
+            tau_actor_param=tau_actor_param,
+            clip_grad=clip_grad,
+            indexed=indexed,
+            weighted=weighted,
+            average=average,
+            random_weighted=random_weighted,
+            initial_memory_threshold=initial_memory_threshold,
+            use_ornstein_noise=use_ornstein_noise,
+            replay_memory_size=replay_memory_size,
+            epsilon_final=epsilon_final,
+            inverting_gradients=inverting_gradients,
+            actor_kwargs={'hidden_layers': layers,
+                          'action_input_layer': action_input_layer, },
+            actor_param_kwargs={'hidden_layers': layers,
+                                'squashing_function': False,
+                                'output_layer_init_std': 0.0001, },
+            zero_index_gradients=zero_index_gradients,
+            seed=seed)
 
         if initialise_params:
-            initial_weights = np.zeros((env.action_space.spaces[0].n, env.observation_space.spaces[0].shape[0]))
+            initial_weights = np.zeros(
+                (env.action_space.spaces[0].n, env.observation_space.spaces[0].shape[0]))
             initial_bias = np.zeros(env.action_space.spaces[0].n)
             for a in range(env.action_space.spaces[0].n):
                 initial_bias[a] = initial_params_[a]
-            agent.set_action_parameter_passthrough_weights(initial_weights, initial_bias)
+            agent.set_action_parameter_passthrough_weights(
+                initial_weights, initial_bias)
         print(agent)
         max_steps = 250
         total_reward = 0.
@@ -213,10 +210,11 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
                 (next_state, steps), reward, terminal, _ = ret
                 next_state = np.array(next_state, dtype=np.float32, copy=False)
 
-                next_act, next_act_param, next_all_action_parameters = agent.act(next_state)
+                next_act, next_act_param, next_all_action_parameters = agent.act(
+                    next_state)
                 next_action = pad_action(next_act, next_act_param)
                 agent.step(state, (act, all_action_parameters), reward, next_state,
-                        (next_act, next_all_action_parameters), terminal, steps)
+                           (next_act, next_all_action_parameters), terminal, steps)
                 act, act_param, all_action_parameters = next_act, next_act_param, next_all_action_parameters
                 action = next_action
                 state = next_state
@@ -231,7 +229,8 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
             agent.end_episode()
 
             if save_frames and i % render_freq == 0:
-                video_index = env.unwrapped.save_render_states(vidir, title, video_index)
+                video_index = env.unwrapped.save_render_states(
+                    vidir, title, video_index)
 
             returns.append(episode_reward)
             lengths.append(episode_length)
@@ -246,8 +245,9 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
                     wandb.log({
                         "avg_length/overall": avg_length, "avg_length/last_100_episodes": avg_100_length,
                         "avg_reward/overall": avg_reward, "avg_reward/last_100_episodes": avg_100_reward
-                        })
-                print('{0:5s} R:{1:.4f} r100:{2:.4f} | L:{3:f} l100:{4:f}'.format(str(i), avg_reward, avg_100_reward, avg_length, avg_100_length))
+                    })
+                print('{0:5s} R:{1:.4f} r100:{2:.4f} | L:{3:f} l100:{4:f}'.format(
+                    str(i), avg_reward, avg_100_reward, avg_length, avg_100_length))
         end_time = time.time()
         print("Took %.2f seconds" % (end_time - start_time))
         env.close()
@@ -258,7 +258,7 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
         print("Ave. return =", sum(returns) / len(returns))
         print("Ave. last 100 episode return =", sum(returns[-100:]) / 100.)
 
-        np.save(os.path.join(dir, title + "{}".format(str(seed))),returns)
+        np.save(os.path.join(dir, title + "{}".format(str(seed))), returns)
 
         if evaluation_episodes > 0:
             print("Evaluating agent over {} episodes".format(evaluation_episodes))
@@ -266,8 +266,10 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
             agent.epsilon = 0.
             agent.noise = None
             evaluation_returns = evaluate(env, agent, evaluation_episodes)
-            print("Ave. evaluation return =", sum(evaluation_returns) / len(evaluation_returns))
-            np.save(os.path.join(dir, title + "{}e".format(str(seed))), evaluation_returns)
+            print("Ave. evaluation return =", sum(
+                evaluation_returns) / len(evaluation_returns))
+            np.save(os.path.join(dir, title + "{}e".format(str(seed))),
+                    evaluation_returns)
 
         if use_wandb:
             wandb.finish()
@@ -275,8 +277,8 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
         c = NotificationClient()
         c.register_backend(platform.Backend())
         notification = Notification(
-            title = 'Script: Run {} complete.'.format(run_index),
-            duration = 5,
+            title='Script: Run {} complete.'.format(run_index),
+            duration=5,
         )
         c.notify_all(notification)
 
