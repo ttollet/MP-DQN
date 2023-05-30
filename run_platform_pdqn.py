@@ -277,7 +277,7 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
         c = NotificationClient()
         c.register_backend(platform.Backend())
         notification = Notification(
-            title='Script: Run {} complete.'.format(run_index),
+            title='Run {} complete ({}).'.format(run_index, os.path.basename(__file__)),
             duration=5,
         )
         c.notify_all(notification)

@@ -1,5 +1,6 @@
 import numpy as np
 import warnings
+import wandb
 
 from agents.agent import Agent
 from agents.basis import SimpleBasis, ScaledBasis, PolynomialBasis
@@ -32,7 +33,9 @@ class QPAMDPAgent(Agent):
                  phi0_func=None,
                  phi0_size=None,
                  poly_basis=False,
-                 print_freq=1):
+                 print_freq=1,
+                 use_wandb=False,
+                 evaluating=False):
         super().__init__(observation_space, action_space)
 
         # split the action space into the discrete actions and continuous parameters
@@ -123,6 +126,11 @@ class QPAMDPAgent(Agent):
             self.parameter_weights.append(np.zeros(shape))
             # self.parameter_weights.append(self.np_random.normal(loc=0.,scale=0.0001,size=shape))
         # self.parameter_weights = self.np_random.random_sample((self.num_actions, self.num_basis_functions))
+
+        if not evaluating:
+            self._use_wandb = use_wandb
+        else:
+            self._use_wandb = False
 
     def act(self, state):
         act = self._action_policy(state)
@@ -232,6 +240,8 @@ class QPAMDPAgent(Agent):
         state, _ = env.reset()
         states = [state]
         rewards = []
+        lengths = []
+        total_length = 0
         actions = []
         terminal = False
         act = self._action_policy(state)
@@ -259,15 +269,27 @@ class QPAMDPAgent(Agent):
         if update_actions:
             self.discrete_agent.end_episode()
 
+        lengths.append(steps)
+        total_length += steps
         self.R += sum(rewards)
         self._total_episodes += 1
         if self.print_freq > 0 and self._total_episodes % self.print_freq == 0:
             if self.print_freq == 1:
+                assert self._use_wandb == False
                 print("{0:5s} R: {1:.4f} r: {2:.4f}".format(str(self._total_episodes), self.R/self._total_episodes,sum(rewards)))
             else:
                 # print("{0:5s} R: {1:.4f}".format(str(self._total_episodes), self.R/self._total_episodes))
                 returns = np.array(env.get_episode_rewards())
-                print('{0:5s} R:{1:.5f} P(S):{2:.4f}'.format(str(self._total_episodes), sum(returns) / (self._total_episodes),
+                avg_reward = sum(returns) / (self._total_episodes)
+                if self._use_wandb:
+                    avg_100_reward = np.array(returns[-100:]).mean()
+                    avg_length = total_length / (self._total_episodes + 1)
+                    avg_100_length = np.array(lengths[-100:]).mean()
+                    wandb.log({
+                        "avg_length/overall": avg_length, "avg_length/last_100_episodes": avg_100_length,
+                        "avg_reward/overall": avg_reward, "avg_reward/last_100_episodes": avg_100_reward
+                    })
+                print('{0:5s} R:{1:.5f} P(S):{2:.4f}'.format(str(self._total_episodes), avg_reward,
                                                              (np.array(returns) == 50.).sum() / len(returns)))
 
         return states, actions, rewards, acts
