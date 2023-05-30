@@ -50,7 +50,7 @@ def evaluate(env, agent, episodes=1000):
 @click.option('--title', default="QPAMDP", help="Prefix of output files", type=str)
 @click.option('--use-wandb', default=False, help="Use Weights & Biases for tracking metrics.", type=bool)
 @click.option('--runs', default=1, help="How many times to run this config.", type=int)
-@click.option('--initial-action-learning-episodes', default=1000, help="How many times to run this config.", type=int)  # Used to be 10000
+@click.option('--initial-action-learning-episodes', default=10000, help="How many times to run this config.", type=int)  # Is 10,000 too high?
 def run(seed, random_seed, episodes, evaluation_episodes, parameter_rollouts, scale, initialise_params, save_dir, title, use_wandb, runs, initial_action_learning_episodes):
     for run_index in range(runs):
         if random_seed:

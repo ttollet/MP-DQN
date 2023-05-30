@@ -132,6 +132,8 @@ class QPAMDPAgent(Agent):
         else:
             self._use_wandb = False
 
+        self._total_length = 0
+
     def act(self, state):
         act = self._action_policy(state)
         param = self._parameter_policy(state, act)
@@ -241,7 +243,6 @@ class QPAMDPAgent(Agent):
         states = [state]
         rewards = []
         lengths = []
-        total_length = 0
         actions = []
         terminal = False
         act = self._action_policy(state)
@@ -270,7 +271,7 @@ class QPAMDPAgent(Agent):
             self.discrete_agent.end_episode()
 
         lengths.append(steps)
-        total_length += steps
+        self._total_length += steps
         self.R += sum(rewards)
         self._total_episodes += 1
         if self.print_freq > 0 and self._total_episodes % self.print_freq == 0:
@@ -283,7 +284,7 @@ class QPAMDPAgent(Agent):
                 avg_reward = sum(returns) / (self._total_episodes)
                 if self._use_wandb:
                     avg_100_reward = np.array(returns[-100:]).mean()
-                    avg_length = total_length / (self._total_episodes + 1)
+                    avg_length = self._total_length / (self._total_episodes + 1)
                     avg_100_length = np.array(lengths[-100:]).mean()
                     wandb.log({
                         "avg_length/overall": avg_length, "avg_length/last_100_episodes": avg_100_length,
