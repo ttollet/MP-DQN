@@ -288,7 +288,8 @@ class QPAMDPAgent(Agent):
                     avg_100_length = np.array(lengths[-100:]).mean()
                     wandb.log({
                         "avg_length/overall": avg_length, "avg_length/last_100_episodes": avg_100_length,
-                        "avg_reward/overall": avg_reward, "avg_reward/last_100_episodes": avg_100_reward
+                        "avg_reward/overall": avg_reward, "avg_reward/last_100_episodes": avg_100_reward,
+                        "episode": self._total_episodes
                     })
                 print('{0:5s} R:{1:.5f} P(S):{2:.4f}'.format(str(self._total_episodes), avg_reward,
                                                              (np.array(returns) == 50.).sum() / len(returns)))

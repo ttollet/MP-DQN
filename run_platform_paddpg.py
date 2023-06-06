@@ -174,7 +174,8 @@ def run(seed, random_seed, episodes, evaluation_episodes, batch_size, gamma, inv
                 if use_wandb:
                     wandb.log({
                         "avg_length/overall": avg_length, "avg_length/last_100_episodes": avg_100_length,
-                        "avg_reward/overall": avg_reward, "avg_reward/last_100_episodes": avg_100_reward
+                        "avg_reward/overall": avg_reward, "avg_reward/last_100_episodes": avg_100_reward,
+                        "episode": i
                     })
                 print('{0:5s} R:{1:.4f} r100:{2:.4f} | L:{3:f} l100:{4:f}'.format(
                     str(i), avg_reward, avg_100_reward, avg_length, avg_100_length))
